@@ -1,77 +1,81 @@
-#include "lua_wrapper/lua_function.h"
+#include "lua_function.h"
 
-namespace {
-    const char * const separator = ".";
-}
+#include "lua_wrapper.h"
+#include "utils.h"
 
 namespace lua
 {
-    Function::Function(int unique_ref) : ref(unique_ref) {}
+const std::vector<Value> Function::kEmptyParams;
+std::vector<Value> Function::KEmptyResults;
 
-    Function::Function(const Function& func)
-    {
-        lua_getref(L, func.ref);
-        ref = lua_ref(L, -1);
-    }
-
-    Function::Function(const std::string& func_id)
-    {
-        ref = Load(func_id.c_str());
-    }
-
-    Function::~Function()
-    {
-        lua_unref(L, ref);
-    }
-
-    int Function::Load(const char* func_id)
-    {
-        std::vector<std::string> tables;
-        tokenize(func_id, tables, separator);
-
-        int i(0);
-        const int i_end = tables.size();
-        for (const std::string& tbl_name : tables)
-        {
-            if (0 == i)
-            {
-                lua_getglobal(L, tbl_name.c_str());
-            }
-            else
-            {
-                PushStringAsNumber(tbl_name);
-                lua_rawget(L, -2);
-            }
-            ++i;
-            
-            const bool tbl_check_failed = (i != i_end) && !lua_istable(L, -1);
-            const bool func_check_failed = (i == i_end) && !lua_isfunction(L, -1);
-
-            if ( tbl_check_failed || func_check_failed )
-            {
-                lua_pop(L, i);
-                break;
-            }
-        }
-
-        assert((1 == lua_isfunction(L, -1)) && "[lua] function not found");
-
-        int index = lua_ref(L, LUA_REGISTRYINDEX);
-        assert(LUA_REFNIL != index && "[lua] reference is nil");
-
-        lua_pop(L, i - 1);
-
-        CHECK_LUA_STACK_EMPTY(L);
-
-        return index;
-    }
-
-    const Function& Function::operator=(const Function& func)
-    {
-        lua_unref(L, ref);
-        lua_getref(L, func.ref);
-        ref = lua_ref(L, -1);
-        return *this;
-    }
-
+Function::Function()
+    : m_reference(LUA_NOREF)
+{
 }
+
+Function::Function(const int reference)
+    : m_reference(reference)
+{
+}
+
+Function::Function(const std::string & path)
+{
+    Stack stack;
+    m_reference = stack.createReference(path.c_str());
+}
+
+Function::Function(const char * path)
+{
+    Stack stack;
+    m_reference = stack.createReference(path);
+}
+
+Function::Function(const Value & value)
+{
+    Stack stack;
+    m_reference = stack.copyReference(value.getReference());
+}
+
+Function::Function(const Function & func)
+{
+    Stack stack;
+    m_reference = stack.copyReference(func.m_reference);
+}
+
+Function::Function(Function && func)
+    : m_reference(func.m_reference)
+{
+    func.m_reference = LUA_NOREF;
+}
+
+Function & Function::operator=(const Function & func)
+{
+    Stack stack;
+    stack.deleteReference(m_reference);
+    m_reference = stack.copyReference(func.m_reference);
+    return *this;
+}
+
+Function & Function ::operator=(Function && func)
+{
+    m_reference = func.m_reference;
+    func.m_reference = LUA_NOREF;
+    return *this;
+}
+
+Function::~Function()
+{
+    if (m_reference != LUA_NOREF)
+    {
+        Stack stack;
+        stack.deleteReference(m_reference);
+    }
+}
+
+bool Function::call(const std::vector<Value> & params, std::vector<Value> & results)
+{
+    Stack stack;
+    return stack.callFunction(m_reference, params, results);
+}
+
+} // lua

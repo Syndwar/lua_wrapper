@@ -1,5 +1,5 @@
-#ifndef LUA_EXT_H
-#define LUA_EXT_H
+#ifndef STREN_LUA_EXT_H
+#define STREN_LUA_EXT_H
 
 extern "C" {
 #include <lua.h>
